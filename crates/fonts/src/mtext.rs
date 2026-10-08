@@ -391,16 +391,28 @@ fn parse(contents: &str, base: Fmt) -> (Vec<Atom>, Vec<Fmt>) {
 fn seg_width(seg: &Seg, f: &Fmt) -> f64 {
     match seg {
         Seg::Text(t) => text_width(&f.font, t, f.height, f.wf),
-        Seg::Stack(top, bottom, sep) => {
-            let hs = f.height * STACK_SCALE;
-            let wt = text_width(&f.font, top, hs, f.wf);
-            let wb = text_width(&f.font, bottom, hs, f.wf);
-            match sep {
-                '#' => wt + wb + f.height * 0.5,
-                '^' => wt.max(wb),
-                _ => wt.max(wb) + f.height * 0.2,
-            }
-        }
+        Seg::Stack(top, bottom, sep) => seg_width_stack(top, bottom, *sep, f),
+    }
+}
+
+/// Width of a word's text segment with no trailing-gap trim: the whole line trims its gap
+/// once, in `finish`, instead of every word and space trimming its own (which collapsed the
+/// gap between words; see `crate::word_width`).
+fn raw_seg_width(seg: &Seg, f: &Fmt) -> f64 {
+    match seg {
+        Seg::Text(t) => crate::word_width(&f.font, t, f.height, f.wf),
+        Seg::Stack(top, bottom, sep) => seg_width_stack(top, bottom, *sep, f),
+    }
+}
+
+fn seg_width_stack(top: &str, bottom: &str, sep: char, f: &Fmt) -> f64 {
+    let hs = f.height * STACK_SCALE;
+    let wt = text_width(&f.font, top, hs, f.wf);
+    let wb = text_width(&f.font, bottom, hs, f.wf);
+    match sep {
+        '#' => wt + wb + f.height * 0.5,
+        '^' => wt.max(wb),
+        _ => wt.max(wb) + f.height * 0.2,
     }
 }
 
@@ -489,6 +501,10 @@ pub fn layout_mtext_with(contents: &str, p: &MTextParams) -> MTextLayout {
     let finish = |lines: &mut Vec<Line>, line: &mut Line, f: &Fmt| {
         if line.items.is_empty() {
             line.max_h = f.height;
+        } else {
+            // Words and spaces accumulate with no trailing-gap trim (see `raw_seg_width`); the
+            // line trims its one trailing gap here, same as `line_width` does for plain text.
+            line.width = (line.width - crate::trailing_gap(&f.font, f.height, f.wf)).max(0.0);
         }
         lines.push(std::mem::take(line));
     };
@@ -506,8 +522,8 @@ pub fn layout_mtext_with(contents: &str, p: &MTextParams) -> MTextLayout {
                 last_fmt = *f;
             }
             Atom::Word(segs) => {
-                let ww: f64 = segs.iter().map(|(sg, f)| seg_width(sg, fmt(*f))).sum();
-                let sw = pending_space.map(|f| text_width(&fmt(f).font, " ", fmt(f).height, fmt(f).wf)).unwrap_or(0.0);
+                let ww: f64 = segs.iter().map(|(sg, f)| raw_seg_width(sg, fmt(*f))).sum();
+                let sw = pending_space.map(|f| crate::word_width(&fmt(f).font, " ", fmt(f).height, fmt(f).wf)).unwrap_or(0.0);
                 if width > 0.0 && !line.items.is_empty() && line.width + sw + ww > width + 1e-9 {
                     finish(&mut lines, &mut line, fmt(last_fmt));
                 } else if !line.items.is_empty() || pending_space.is_some() {
@@ -518,7 +534,7 @@ pub fn layout_mtext_with(contents: &str, p: &MTextParams) -> MTextLayout {
                 }
                 pending_space = None;
                 for (sg, f) in segs {
-                    let fw = seg_width(sg, fmt(*f));
+                    let fw = raw_seg_width(sg, fmt(*f));
                     line.max_h = line.max_h.max(fmt(*f).height);
                     line.text.push_str(&seg_plain(sg));
                     line.items.push((sg.clone(), *f, line.width));
@@ -595,6 +611,14 @@ mod tests {
     }
 
     #[test]
+    fn space_width_matches_text() {
+        let h = 180.0;
+        let l = layout_mtext("a b", Vec2::ZERO, h, 0.0, 1, 0.0, 1.0);
+        let expected = crate::line_width("a b", h, 1.0);
+        assert!((l.bounds.width() - expected).abs() < 1e-9, "got {} expected {expected}", l.bounds.width());
+    }
+
+    #[test]
     fn wraps_to_width() {
         let l = layout_mtext("the quick brown fox jumps over the lazy dog", Vec2::ZERO, 1.0, 8.0, 1, 0.0, 1.0);
         assert!(l.lines.len() > 2);
@@ -628,7 +652,10 @@ mod tests {
         assert!((abs.bounds.width() - 2.0 * small).abs() < 1e-6);
         assert!((abs.bounds.height() - 2.0).abs() < 1e-9);
         let rel = lay("{\\H3x;AB}AB", 0.0);
-        assert!((rel.bounds.width() - 4.0 * small).abs() < 1e-6, "{}", rel.bounds.width());
+        // Only the word's last run trims its trailing gap (the first run joins the next run
+        // directly, same as two adjoining chars in plain TEXT); see `raw_seg_width`.
+        let expected_rel = crate::word_width(&TextFont::Stroke, "AB", 3.0, 1.0) + crate::line_width("AB", 1.0, 1.0);
+        assert!((rel.bounds.width() - expected_rel).abs() < 1e-6, "{}", rel.bounds.width());
         assert!((rel.bounds.height() - 3.0).abs() < 1e-9);
     }
 

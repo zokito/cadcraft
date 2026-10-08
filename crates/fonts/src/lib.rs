@@ -140,10 +140,38 @@ pub fn layout_line(s: &str, height: f64, width_factor: f64, oblique: f64) -> Run
     run
 }
 
+/// Sum of character advances with no trailing-gap trim (stroke font only).
+fn raw_width(s: &str, height: f64, width_factor: f64) -> f64 {
+    let n: f64 = decode_controls(s).iter().map(|(c, _, _)| char_advance(*c)).sum();
+    n * height * width_factor
+}
+
 /// Width of a line without building strokes.
 pub fn line_width(s: &str, height: f64, width_factor: f64) -> f64 {
-    let n: f64 = decode_controls(s).iter().map(|(c, _, _)| char_advance(*c)).sum();
-    (n * height * width_factor - stroke::GAP / stroke::CAP * height * width_factor).max(0.0)
+    (raw_width(s, height, width_factor) - stroke::GAP / stroke::CAP * height * width_factor).max(0.0)
+}
+
+/// Width of a run of text with no trailing-gap trim: correct for summing adjoining pieces
+/// (e.g. MTEXT words and spaces) where only the whole line's final trailing gap should be
+/// trimmed, not each piece's.
+pub(crate) fn word_width(font: &TextFont, s: &str, height: f64, width_factor: f64) -> f64 {
+    if let TextFont::Outline(bytes) = font
+        && let Some(w) = ttf::width(bytes, s, height, width_factor)
+    {
+        return w;
+    }
+    raw_width(s, height, width_factor)
+}
+
+/// The trailing gap a whole line should trim once, in the given format (zero for outline
+/// fonts, which carry no artificial per-character gap).
+pub(crate) fn trailing_gap(font: &TextFont, height: f64, width_factor: f64) -> f64 {
+    if font.is_outline() {
+        return 0.0;
+    }
+    let h = if height.is_finite() && height > 0.0 { height } else { 1.0 };
+    let wf = if width_factor.is_finite() && width_factor.abs() > 1e-6 { width_factor } else { 1.0 };
+    stroke::GAP / stroke::CAP * h * wf
 }
 
 /// The font a piece of text is set in: the built-in stroke font or an installed TrueType /
@@ -403,12 +431,26 @@ mod tests {
 
     #[test]
     fn glyph_points_stay_in_grid() {
-        for c in ' '..='~' {
+        for c in (' '..='~').chain("ČĆŽŠĐčćžšđ–’‘“”„".chars()) {
             let (w, spec) = stroke::glyph(c).unwrap();
             for st in stroke::strokes(spec) {
                 for (x, y) in st {
                     assert!(x >= 0.0 && x <= w, "{c:?} x={x} w={w}");
-                    assert!((-2.0..=6.0).contains(&y), "{c:?} y={y}");
+                    assert!((-2.0..=8.0).contains(&y), "{c:?} y={y}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn croatian_and_dash_have_glyphs() {
+        for c in "ČĆŽŠĐčćžšđ–".chars() {
+            let (w, spec) = stroke::glyph(c).unwrap_or_else(|| panic!("missing glyph {c:?}"));
+            assert!(w > 0.0, "{c:?} zero width");
+            for st in stroke::strokes(spec) {
+                for (x, y) in st {
+                    assert!(x >= 0.0 && x <= w, "{c:?} x={x} w={w}");
+                    assert!((-2.0..=8.0).contains(&y), "{c:?} y={y}");
                 }
             }
         }
