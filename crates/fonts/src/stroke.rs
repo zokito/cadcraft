@@ -109,17 +109,18 @@ pub(crate) fn glyph(c: char) -> Option<(f64, &'static str)> {
         '°' => (2.0, "1i0h1g2h1i"),
         '±' => (4.0, "2e2i 0g4g 0d4d"),
         'Ø' | 'ø' | '⌀' => (4.0, "1c0d0h1i3i4h4d3c1c 0c4i"),
-        // Croatian: caron (ˇ) and acute (´) sit above cap height on capitals (rows j/k), above
-        // x-height on lowercase (existing rows); Đ/đ add a stroke through the ascender.
-        'Č' => (4.0, "4h3i1i0h0d1c3c4d 1i2j3i"),
+        // Croatian: caron (ˇ, a v with its apex down) and acute (´) sit above cap height on
+        // capitals (rows j/k), above x-height on lowercase (existing rows); Đ/đ add a short
+        // bar across the stem only, not the bowl.
+        'Č' => (4.0, "4h3i1i0h0d1c3c4d 1j2i3j"),
         'Ć' => (4.0, "4h3i1i0h0d1c3c4d 1i3j"),
-        'Ž' => (4.0, "0i4i0c4c 1i2j3i"),
-        'Š' => (4.0, "4h3i1i0h0g1f3f4e4d3c1c0d 1i2j3i"),
-        'Đ' => (4.0, "0c0i3i4h4d3c0c 0g3g"),
-        'č' => (4.0, "4f3g1g0f0d1c3c4d 1g2h3g"),
+        'Ž' => (4.0, "0i4i0c4c 1j2i3j"),
+        'Š' => (4.0, "4h3i1i0h0g1f3f4e4d3c1c0d 1j2i3j"),
+        'Đ' => (4.0, "0c0i3i4h4d3c0c 0g2g"),
+        'č' => (4.0, "4f3g1g0f0d1c3c4d 1h2g3h"),
         'ć' => (4.0, "4f3g1g0f0d1c3c4d 1g3h"),
-        'ž' => (4.0, "0g4g0c4c 1g2h3g"),
-        'š' => (4.0, "4f3g1g0f1e3e4d3c1c0d 1g2h3g"),
+        'ž' => (4.0, "0g4g0c4c 1h2g3h"),
+        'š' => (4.0, "4f3g1g0f1e3e4d3c1c0d 1h2g3h"),
         'đ' => (4.0, "4i4c 4d3c1c0d0f1g3g4f 3h4h"),
         '–' => (4.0, "0f4f"),
         '’' => (1.0, "0i0g"),

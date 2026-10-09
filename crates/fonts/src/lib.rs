@@ -457,6 +457,21 @@ mod tests {
     }
 
     #[test]
+    fn caron_dips_and_dj_bar_stays_off_the_bowl() {
+        for c in ['Č', 'č', 'Ž', 'ž', 'Š', 'š'] {
+            let (_, spec) = stroke::glyph(c).unwrap_or_else(|| panic!("missing glyph {c:?}"));
+            let caron = stroke::strokes(spec).pop().unwrap_or_else(|| panic!("{c:?} has no caron stroke"));
+            let apex_y = caron.iter().map(|(_, y)| *y).fold(f64::INFINITY, f64::min);
+            let arm_y = caron.iter().map(|(_, y)| *y).fold(f64::NEG_INFINITY, f64::max);
+            assert!(apex_y < arm_y, "{c:?} caron apex {apex_y} not below its arms {arm_y}");
+        }
+        let (w, spec) = stroke::glyph('Đ').unwrap();
+        let bar = stroke::strokes(spec).pop().unwrap();
+        let bar_max_x = bar.iter().map(|(x, _)| *x).fold(f64::MIN, f64::max);
+        assert!(bar_max_x < w - 1.0, "Đ bar reaches the bowl: max x {bar_max_x}, width {w}");
+    }
+
+    #[test]
     fn control_codes() {
         let d: String = decode_controls("45%%d %%p0.1 %%c10 100%%%").iter().map(|x| x.0).collect();
         assert_eq!(d, "45° ±0.1 ⌀10 100%");
